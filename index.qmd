@@ -1,0 +1,161 @@
+---
+title: "Maps"
+author: "Collin Owens"
+format: html
+editor: visual
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(stringr)
+library(plotly)
+library(ggdendro)
+library(viridis)
+library(leafpop)
+library(tidyr)
+```
+
+# Reading in Data and merging
+
+```{r}
+States <- read.csv("D:\\GradSchool\\STA 566\\Data\\states.csv")
+names(States)[1] <- "states"
+names(States)[2] <- "SABR"
+
+Cities <- read.csv("D:\\GradSchool\\STA 566\\Data\\uscities.csv")
+names(Cities)[1] <- "HOMETOWN"
+names(Cities)[2] <- "SABR"
+names(Cities)[4] <- "clat"
+names(Cities)[5] <- "clong"
+
+BBrank <- read.csv("D:\\GradSchool\\STA 566\\Data\\Basketball2023.csv")
+names(BBrank)[7] <- "SABR"
+
+FBrank <- read.csv("D:\\GradSchool\\STA 566\\Data\\Football2023.csv")
+FBrank <- subset(FBrank, select=-c(STARS))
+names(FBrank)[9] <- "SABR"
+
+USA <- map_data("state")
+names(USA)[5] <- "states"
+
+USA <- USA %>% mutate(states = str_to_title(states))
+USA <- left_join(USA, States, by="states")
+names(USA)[7] <- "SABR"
+
+BBrank <- left_join(BBrank, States, by="SABR")
+
+
+FBrank <- left_join(FBrank, States, by="SABR")
+
+```
+
+# Creating a count for states and how many top 100 players they have
+
+```{r}
+BBStaterank <- BBrank %>% group_by(SABR) %>% summarize(n = n())
+
+FBStaterank <- FBrank %>% group_by(SABR) %>% summarize(n = n())
+
+TotalRank <- left_join(BBStaterank, FBStaterank, by = "SABR", all=T)
+TotalRank$n.x[is.na(TotalRank$n.x)] <- 0
+TotalRank$n.y[is.na(TotalRank$n.y)] <- 0
+TotalRank$n <- TotalRank$n.x + TotalRank$n.y
+TotalRank <- TotalRank[,-c(2,3)]
+```
+
+# New data set with the counts
+
+```{r}
+BBUSA <- right_join(BBStaterank, USA, by="SABR", all=T)
+names(BBUSA)[2] <- "Players"
+FBUSA <- right_join(FBStaterank, USA, by="SABR", all=T)
+names(FBUSA)[2] <- "Players"
+
+TotalUSA <- right_join(TotalRank, USA, by="SABR", all=T)
+names(TotalUSA)[2] <- "Players"
+```
+
+# First graph
+
+This will look at basketball top 100 recruits and which home state they are from.
+
+```{r}
+BBGraph <- ggplot(data = BBUSA, aes(x = long, y = lat, group = group, fill = Players, text = paste("Number of players in state:", round(Players))))
+BBGraph <- BBGraph + geom_polygon(color = "white") + ggdendro::theme_dendro() + scale_fill_viridis(option = "rocket") + ggtitle("ESPN Top 100 Basketball players by homestate")
+ggplotly(BBGraph, tooltip = "text")
+
+?ggtitle
+```
+
+# Football
+
+Same as above, but with football.
+
+```{r}
+FBGraph <- ggplot(data = FBUSA, aes(x = long, y = lat, group = group, fill = Players, text = paste("Number of players in state:", round(Players))))
+FBGraph <- FBGraph + geom_polygon(color = "white") + ggdendro::theme_dendro() + scale_fill_viridis(option = "rocket") + ggtitle("ESPN Top 100 Football players by homestate")
+ggplotly(FBGraph, tooltip = "text")
+```
+
+# Total
+
+```{r}
+TotalGraph <- ggplot(data = TotalUSA, aes(x = long, y = lat, group = group, fill = Players, text = paste("Number of players in state:", round(Players))))
+TotalGraph <- TotalGraph + geom_polygon(color = "white") + ggdendro::theme_dendro() + scale_fill_viridis(option = "rocket") + ggtitle("ESPN combined top 100 Football and Basketball players by state")
+ggplotly(TotalGraph, tooltip = "text")
+```
+
+# Leaflet setup
+
+```{r}
+USAv <- USA %>% group_by(SABR) %>% summarise(lat=mean(lat), long=mean(long))
+
+BBUSAL <- right_join(BBStaterank, USAv, by="SABR", all=T)
+names(BBUSA)[2] <- "Players"
+
+FBUSAL <- right_join(FBStaterank, USAv, by="SABR", all=T)
+names(FBUSA)[2] <- "Players"
+
+TotalUSAL <- right_join(TotalRank, USAv, by="SABR", all=T)
+names(TotalUSA)[2] <- "Players"
+
+BBrankL <- right_join(BBrank, USAv, by="SABR", all=T)
+BBrankL <- na.omit(BBrankL)
+
+BBrankLC <- right_join(BBrankL, Cities, by = c("HOMETOWN","SABR"))
+BBrankLC <- na.omit(BBrankLC)
+
+
+BBrankL$label <- paste(sep = " ", BBrankL$RK, BBrankL$PLAYER, BBrankL$POS, BBrankL$HOMETOWN)
+
+AggPlayers <- aggregate(PLAYER ~ clat, data = BBrankLC, paste, collapse = ",")
+BBrankLC <- right_join(BBrankLC, AggPlayers, by="clat", all=T)
+names(BBrankLC)[14] <- "PlayersInCity"
+ 
+BBrankLC$PlayersInCity <- paste(sep = "<br/>", BBrankLC$PlayersInCity)
+
+FBrankL <- right_join(FBrank, USAv, by="SABR", all=T)
+FBrankL <- na.omit(FBrankL)
+
+FBrankLC <- right_join(FBrankL, Cities, by = c("HOMETOWN","SABR"))
+FBrankLC <- na.omit(FBrankLC)
+
+AggFBPlayers <- aggregate(PLAYER ~ clat, data = FBrankLC, paste, collapse = ",")
+FBrankLC <- right_join(FBrankLC, AggFBPlayers, by="clat", all=T)
+names(FBrankLC)[16] <- "PlayersInCity"
+```
+
+# Top 100 basketball players Home towns
+Players from the same city will be grouped together
+```{r}
+leaflet(BBrankLC) %>% addTiles() %>% addMarkers(~clong, ~clat, popup = ~BBrankLC$PlayersInCity)
+```
+
+# Top 100 football players Home towns 
+Players from the same city will be grouped together
+```{r}
+leaflet(FBrankLC) %>% addTiles() %>% addMarkers(~clong, ~clat, popup = ~FBrankLC$PlayersInCity)
+```
+
