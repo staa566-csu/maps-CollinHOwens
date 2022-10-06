@@ -91,6 +91,8 @@ ggplotly(BBGraph, tooltip = "text")
 
 # Football
 
+Same as above, but with football.
+
 ```{r}
 FBGraph <- ggplot(data = FBUSA, aes(x = long, y = lat, group = group, fill = Players, text = paste("Number of players in state:", round(Players))))
 FBGraph <- FBGraph + geom_polygon(color = "white") + ggdendro::theme_dendro() + scale_fill_viridis(option = "rocket") + ggtitle("ESPN Top 100 Football players by homestate")
@@ -133,10 +135,27 @@ BBrankLC <- right_join(BBrankLC, AggPlayers, by="clat", all=T)
 names(BBrankLC)[14] <- "PlayersInCity"
  
 BBrankLC$PlayersInCity <- paste(sep = "<br/>", BBrankLC$PlayersInCity)
+
+FBrankL <- right_join(FBrank, USAv, by="SABR", all=T)
+FBrankL <- na.omit(FBrankL)
+
+FBrankLC <- right_join(FBrankL, Cities, by = c("HOMETOWN","SABR"))
+FBrankLC <- na.omit(FBrankLC)
+
+AggFBPlayers <- aggregate(PLAYER ~ clat, data = FBrankLC, paste, collapse = ",")
+FBrankLC <- right_join(FBrankLC, AggFBPlayers, by="clat", all=T)
+names(FBrankLC)[16] <- "PlayersInCity"
 ```
 
 # Top 100 basketball players Home towns
-
+Players from the same city will be grouped together
 ```{r}
 leaflet(BBrankLC) %>% addTiles() %>% addMarkers(~clong, ~clat, popup = ~BBrankLC$PlayersInCity)
 ```
+
+# Top 100 football players Home towns 
+Players from the same city will be grouped together
+```{r}
+leaflet(FBrankLC) %>% addTiles() %>% addMarkers(~clong, ~clat, popup = ~FBrankLC$PlayersInCity)
+```
+
